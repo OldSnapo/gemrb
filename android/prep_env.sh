@@ -10,9 +10,9 @@ GEMRB_VERSION=""
 
 function build_vorbis {
   echo -en "Checking out libogg-vorbis.\n"
-  git clone git://github.com/jcadam/libogg-vorbis-android.git &&
+  git clone https://github.com/nwertzberger/libogg-vorbis-android &&
   echo -en "Building libogg-vorbis...\n" &&
-  pushd "$ENVROOT/libogg-vorbis-android" &&
+  pushd "$ENVROOT/libogg-vorbis-android/main" &&
   ndk-build &&
   popd &&
   echo -en "Done with libogg-vorbis.\n"
@@ -22,7 +22,7 @@ function build_openal {
   # this still only works with a copied android.h from pelya/commandergenius
   # ifdef SDLVERSION somethingsomething in OpenALAudio solves this
   echo -en "Checking out openal.\n"
-  git clone git://repo.or.cz/openal-soft/android.git &&
+  git clone http://repo.or.cz/r/openal-soft/android.git &&
   mv "$ENVROOT/android" "$ENVROOT/openal" && # why would they name it "android" :(
   echo -en "Building openal...\n" &&
   pushd "$ENVROOT/openal/android" &&
@@ -33,7 +33,7 @@ function build_openal {
 
 function build_libpng {
   echo -en "Checking out libpng...\n"
-  git clone git://github.com/julienr/libpng-android.git &&
+  git clone https://github.com/julienr/libpng-android &&
   echo -en "Building libpng...\n" &&
   pushd "$ENVROOT/libpng-android" &&
   ndk-build &&
@@ -43,7 +43,7 @@ function build_libpng {
 
 function get_freetype {
   # can't precompile freetype, at least not as it comes from upstream
-  git clone git://github.com/cdave1/freetype2-android.git
+  git clone https://github.com/cdave1/freetype2-android
 }
 
 function build_deps {
@@ -57,6 +57,10 @@ function setup_dir_struct {
   echo -en "Checking out SDL2...\n"
   # get SDL2
   hg clone http://hg.libsdl.org/SDL &&
+  # **** Old Snapo, start (Force SDL 2.0.0, remove when fixed by GemRB team) ****
+  pushd "$ENVROOT/SDL" &&
+  hg co release-2.0.0 &&
+  popd &&
   # and do what it says in its README.android
   echo -en "Creating the directory structure for the project..." &&
   mkdir build &&
@@ -92,12 +96,12 @@ function move_libraries {
   echo -en "Copying prebuilt libraries and linking header directories...\n" &&
 
   # libogg
-  cp "$ENVROOT/libogg-vorbis-android/libs/armeabi/libogg.so" "$ENVROOT/build/gemrb/jni/libogg/" &&
-  ln -s "$ENVROOT/libogg-vorbis-android/jni/include/" "$ENVROOT/build/gemrb/jni/libogg/include" &&
+  cp "$ENVROOT/libogg-vorbis-android/main/libs/armeabi/libogg.so" "$ENVROOT/build/gemrb/jni/libogg/" &&
+  ln -s "$ENVROOT/libogg-vorbis-android/main/jni/include/" "$ENVROOT/build/gemrb/jni/libogg/include" &&
 
   # vorbis
-  cp "$ENVROOT/libogg-vorbis-android/libs/armeabi/libvorbis.so" "$ENVROOT/build/gemrb/jni/libvorbis/" &&
-  ln -s "$ENVROOT/libogg-vorbis-android/jni/include/" "$ENVROOT/build/gemrb/jni/libvorbis/include" &&
+  cp "$ENVROOT/libogg-vorbis-android/main/libs/armeabi/libvorbis.so" "$ENVROOT/build/gemrb/jni/libvorbis/" &&
+  ln -s "$ENVROOT/libogg-vorbis-android/main/jni/include/" "$ENVROOT/build/gemrb/jni/libvorbis/include" &&
   # those two are a little bit messy, because they both need their include directory
   # this is because they can't both be defined as prebuilt libraries in the same makefile and directory,
   # because that messes with makefile variables for some reason
