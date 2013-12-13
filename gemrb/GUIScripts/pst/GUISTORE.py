@@ -33,6 +33,7 @@ StoreWindow = None
 
 MessageWindow = None
 ActionWindow = None
+MenuWindow = None
 PortraitWindow = None
 StoreShoppingWindow = None
 StoreIdentifyWindow = None
@@ -91,7 +92,7 @@ def CloseWindows ():
 
 def CloseStoreWindow ():
 	import GUIINV
-	global StoreWindow, ActionWindow, PortraitWindow
+	global StoreWindow, ActionWindow, MenuWindow, PortraitWindow
 	global OldPortraitWindow
 
 	GemRB.SetVar ("Inventory", 0)
@@ -100,6 +101,8 @@ def CloseStoreWindow ():
 		StoreWindow.Unload ()
 	if ActionWindow:
 		ActionWindow.Unload ()
+	if MenuWindow:
+		MenuWindow.Unload ()
 	if PortraitWindow:
 		PortraitWindow.Unload ()
 	StoreWindow = None
@@ -108,6 +111,7 @@ def CloseStoreWindow ():
 	if Inventory: # broken if available
 		GUIINV.OpenInventoryWindow ()
 	else:
+		GemRB.GamePause (0, 3)
 		GUICommon.GameWindow.SetVisible(WINDOW_VISIBLE) #enabling the game control screen
 		GemRB.UnhideGUI () #enabling the other windows
 		GUICommonWindows.SetSelectionChangeHandler( None )
@@ -117,7 +121,7 @@ def CloseStoreWindow ():
 
 def OpenStoreWindow ():
 	global Store
-	global StoreWindow, ActionWindow, PortraitWindow
+	global StoreWindow, ActionWindow, MenuWindow, PortraitWindow
 	global OldPortraitWindow
 	global store_funcs
 	global Inventory
@@ -139,6 +143,8 @@ def OpenStoreWindow ():
 		Inventory = 1
 	else:
 		Inventory = None
+		# pause the game, so we don't get interrupted
+		GemRB.GamePause (1, 3)
 
 	GemRB.SetVar ("Action", 0)
 	GemRB.LoadWindowPack ("GUISTORE", 640, 480)
@@ -149,6 +155,8 @@ def OpenStoreWindow ():
 	ActionWindow = GemRB.LoadWindow (0)
 	#this window is static and grey, but good to stick the frame onto
 	ActionWindow.SetFrame ()
+
+	MenuWindow = GemRB.LoadWindow (2)
 
 	Store = GemRB.GetStore ()
 
@@ -181,7 +189,8 @@ def OpenStoreWindow ():
 			Button.SetEvent (IE_GUI_BUTTON_ON_PRESS, None)
 			Button.SetState (IE_GUI_BUTTON_DISABLED)
 
-	ActionWindow.SetVisible (WINDOW_VISIBLE)
+	ActionWindow.SetVisible (WINDOW_GRAYED)
+	MenuWindow.SetVisible (WINDOW_GRAYED)
 	Window.SetVisible (WINDOW_VISIBLE)
 	store_funcs[store_buttons[0]] ()
 	PortraitWindow.SetVisible (WINDOW_VISIBLE)
@@ -222,12 +231,12 @@ def OpenStoreShoppingWindow ():
 
 	for i in range (4):
 		Button = Window.GetControl (i+8)
-		Button.SetBorder (0,0,0,0,0,0,0,128,160,0,1)
+		Button.SetBorder (0,0,0,0,0,128,0,0,100,0,1)
 		Button.SetEvent (IE_GUI_BUTTON_ON_PRESS, SelectBuy)
 		Button.SetEvent (IE_GUI_BUTTON_ON_RIGHT_PRESS, InfoLeftWindow)
 
 		Button = Window.GetControl (i+17)
-		Button.SetBorder (0,0,0,0,0,0,0,128,160,0,1)
+		Button.SetBorder (0,0,0,0,0,128,0,0,100,0,1)
 		if Store['StoreType'] != 3: # can't sell to temples
 			Button.SetEvent (IE_GUI_BUTTON_ON_PRESS, SelectSell)
 		Button.SetEvent (IE_GUI_BUTTON_ON_RIGHT_PRESS, InfoRightWindow)
@@ -306,7 +315,7 @@ def OpenStoreIdentifyWindow ():
 	for i in range (4):
 		Button = Window.GetControl (i+6)
 		Button.SetFlags (IE_GUI_BUTTON_RADIOBUTTON, OP_OR)
-		Button.SetBorder (0,0,0,0,0,0,0,128,160,0,1)
+		Button.SetBorder (0,0,0,0,0,128,0,0,100,0,1)
 		Button.SetEvent (IE_GUI_BUTTON_ON_PRESS, RedrawStoreIdentifyWindow)
 		Button.SetEvent (IE_GUI_BUTTON_ON_RIGHT_PRESS, InfoIdentifyWindow)
 
@@ -330,11 +339,11 @@ def OpenStoreStealWindow ():
 
 	for i in range (4):
 		Button = Window.GetControl (i+5)
-		Button.SetBorder (0,0,0,0,0,0,0,128,160,0,1)
+		Button.SetBorder (0,0,0,0,0,128,0,0,100,0,1)
 		Button.SetEvent (IE_GUI_BUTTON_ON_PRESS, RedrawStoreStealWindow)
 
 		Button = Window.GetControl (i+14)
-		Button.SetBorder (0,0,0,0,0,0,0,128,160,0,1)
+		Button.SetBorder (0,0,0,0,0,128,0,0,100,0,1)
 		Button.SetEvent (IE_GUI_BUTTON_ON_RIGHT_PRESS, InfoRightWindow)
 
 	# Steal
@@ -522,7 +531,7 @@ def UpdateStoreCommon (Window, title, name, gold):
 	if name:
 		pc = GemRB.GameGetSelectedPCSingle ()
 		Label = Window.GetControl (name)
-		Label.SetText (GemRB.GetPlayerName (pc, 0) )
+		Label.SetText (GemRB.GetPlayerName (pc, -1) )
 
 	Label = Window.GetControl (gold)
 	Label.SetText (str(GemRB.GameGetPartyGold ()))
@@ -648,6 +657,8 @@ def RedrawStoreShoppingWindow ():
 
 	UpdateStoreCommon (Window, 0x10000001, 0x10000005, 0x10000002)
 	pc = GemRB.GameGetSelectedPCSingle ()
+
+	GUICommon.SetEncumbranceLabels (Window, 25, None, GemRB.GameGetSelectedPCSingle (), True)
 
 	LeftTopIndex = GemRB.GetVar ("LeftTopIndex")
 	LeftIndex = GemRB.GetVar ("LeftIndex")
