@@ -708,14 +708,10 @@ void Map::UpdateScripts()
 		Actor* actor = queue[PR_SCRIPT][q];
 		//actor just moved away, don't run its script from this side
 		if (actor->GetCurrentArea()!=this) {
-			actor->no_more_steps = true;
 			continue;
 		}
 
-		//FIXME:we need a better timestop hack, actors shouldn't abort moving after a timestop expired
 		if (game->TimeStoppedFor(actor)) {
-			actor->no_more_steps = true;
-			actor->ClearPath(); //HACK: prevents jumping when timestop ends
 			continue;
 		}
 
@@ -732,23 +728,13 @@ void Map::UpdateScripts()
 			//it looks like STATE_SLEEP allows scripts, probably it is STATE_HELPLESS what disables scripts
 			//if that isn't true either, remove this block completely
 			if (actor->GetStat(IE_STATE_ID) & STATE_HELPLESS) {
-				actor->no_more_steps = true;
-				//FIXME:obviously we miss the ClearPath hack here (but we need a better one)
 				continue;
 			}
 		}
 
 		if (actor->GetStat(IE_AVATARREMOVAL)) {
-			actor->no_more_steps = true;
-			actor->ClearPath();
+			actor->Stop(); // maze and imprisonment should invalidate existing actions
 			continue;
-		}
-
-		//FIXME: we need a better immobile hack, the actors used to retain their target
-		//and resume moving after the hold effect stopped
-		actor->no_more_steps = false;
-		if (actor->Immobile()) {
-			actor->ClearPath(); //HACK: prevents jumping when effect ends
 		}
 
 		/*
@@ -763,20 +749,6 @@ void Map::UpdateScripts()
 		 * and we should probably be staggering the script executions anyway
 		 */
 		actor->Update();
-
-	}
-
-	//clean up effects on dead actors too
-	q=Qcount[PR_DISPLAY];
-	while(q--) {
-		Actor* actor = queue[PR_DISPLAY][q];
-		actor->fxqueue.Cleanup();
-	}
-
-	q=Qcount[PR_SCRIPT];
-	while (q--) {
-		Actor* actor = queue[PR_SCRIPT][q];
-		if (actor->no_more_steps) continue;
 
 		actor->UpdateActorState(game->GameTime);
 
@@ -803,6 +775,13 @@ void Map::UpdateScripts()
 		actor->speed = speed;
 	}
 
+	//clean up effects on dead actors too
+	q=Qcount[PR_DISPLAY];
+	while(q--) {
+		Actor* actor = queue[PR_DISPLAY][q];
+		actor->fxqueue.Cleanup();
+	}
+
 	// We need to step through the list of actors until all of them are done
 	// taking steps.
 	bool more_steps = true;
@@ -813,7 +792,6 @@ void Map::UpdateScripts()
 		q=Qcount[PR_SCRIPT];
 		while (q--) {
 			Actor* actor = queue[PR_SCRIPT][q];
-			if (actor->no_more_steps) continue;
 
 			// try to exclude actors which only just died
 			// (shouldn't we not be stepping actors which don't have a path anyway?)
@@ -821,8 +799,7 @@ void Map::UpdateScripts()
 			if (!actor->ValidTarget(GA_NO_DEAD)) continue;
 			//if (actor->GetStat(IE_STATE_ID)&STATE_DEAD || actor->GetInternalFlag() & IF_JUSTDIED) continue;
 
-			actor->no_more_steps = DoStepForActor(actor, actor->speed, time);
-			if (!actor->no_more_steps) more_steps = true;
+			if (!DoStepForActor(actor, actor->speed, time)) more_steps = true;
 		}
 	}
 
@@ -919,8 +896,11 @@ void Map::ResolveTerrainSound(ieResRef &sound, Point &Pos) {
 }
 
 bool Map::DoStepForActor(Actor *actor, int speed, ieDword time) {
-	bool no_more_steps = true;
+	if (actor->Immobile()) {
+		return true;
+	}
 
+	bool no_more_steps = true;
 	if (actor->BlocksSearchMap()) {
 		ClearSearchMapFor(actor);
 
@@ -933,11 +913,9 @@ bool Map::DoStepForActor(Actor *actor, int speed, ieDword time) {
 		}
 	}
 	if (!(actor->GetBase(IE_STATE_ID)&STATE_CANTMOVE) ) {
-		if (!actor->Immobile()) {
-			no_more_steps = actor->DoStep( speed, time );
-			if (actor->BlocksSearchMap()) {
-				BlockSearchMap( actor->Pos, actor->size, actor->IsPartyMember()?PATH_MAP_PC:PATH_MAP_NPC);
-			}
+		no_more_steps = actor->DoStep( speed, time );
+		if (actor->BlocksSearchMap()) {
+			BlockSearchMap( actor->Pos, actor->size, actor->IsPartyMember()?PATH_MAP_PC:PATH_MAP_NPC);
 		}
 	}
 
@@ -2258,7 +2236,7 @@ void Map::RemoveActor(Actor* actor)
 	size_t i=actors.size();
 	while (i--) {
 		if (actors[i] == actor) {
-			//clear previous walk path
+			//path is invalid outside this area, but actions may be valid
 			actor->ClearPath();
 			ClearSearchMapFor(actor);
 			actor->SetMap(NULL);

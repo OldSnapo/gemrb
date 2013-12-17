@@ -349,7 +349,6 @@ public:
 	ieDword nextComment;         //do something random (area comment, interaction)
 	ieDword nextBored;           //do something when bored
 	ieDword lastInit;
-	bool no_more_steps;
 	int speed;
 	//how many attacks left in this round, must be public for cleave opcode
 	int attackcount;
@@ -524,7 +523,7 @@ public:
 	/* call this on gui selects */
 	void PlaySelectionSound();
 	/* call this when adding actions via gui */
-	void CommandActor();
+	void CommandActor(Action* action);
 	/** handle panic and other involuntary actions that mess with scripting */
 	bool OverrideActions();
 	/** handle idle actions, that shouldn't mess with scripting */
@@ -698,6 +697,7 @@ public:
 	void UpdateAnimations();
 	/* if necessary, draw actor */
 	void Draw(const Region &screen);
+	bool DoStep(unsigned int walk_speed, ieDword time = 0);
 
 	/* add mobile vvc (spell effects) to actor's list */
 	void AddVVCell(ScriptedAnimation* vvc);

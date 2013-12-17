@@ -105,6 +105,7 @@ void GameControl::SetTracker(Actor *actor, ieDword dist)
 }
 
 GameControl::GameControl(void)
+	: windowGroupCounts()
 {
 	if (!formations) {
 		ReadFormations();
@@ -152,10 +153,6 @@ GameControl::GameControl(void)
 	} else {
 		ScreenFlags = SF_CENTERONACTOR;
 	}
-	LeftCount = 0;
-	BottomCount = 0;
-	RightCount = 0;
-	TopCount = 0;
 	DialogueFlags = 0;
 	dialoghandler = new DialogHandler();
 	DisplayText = NULL;
@@ -279,8 +276,7 @@ void GameControl::CreateMovement(Actor *actor, const Point &p)
 		action = GenerateAction( Tmp );
 	}
 
-	actor->AddAction( action );
-	actor->CommandActor();
+	actor->CommandActor(action);
 }
 
 GameControl::~GameControl(void)
@@ -1036,11 +1032,8 @@ bool GameControl::OnKeyRelease(unsigned char Key, unsigned short Mod)
 
 			case 'q': //joins actor to the party
 				if (lastActor && !lastActor->InParty) {
-					lastActor->ClearActions();
-					lastActor->ClearPath();
-					char Tmp[40];
-					strlcpy(Tmp, "JoinParty()", sizeof(Tmp));
-					lastActor->AddAction( GenerateAction(Tmp) );
+					lastActor->Stop();
+					lastActor->AddAction( GenerateAction("JoinParty()") );
 				}
 				break;
 			case 'p': //center on actor
@@ -1049,11 +1042,8 @@ bool GameControl::OnKeyRelease(unsigned char Key, unsigned short Mod)
 				break;
 			case 'k': //kicks out actor
 				if (lastActor && lastActor->InParty) {
-					lastActor->ClearActions();
-					lastActor->ClearPath();
-					char Tmp[40];
-					strlcpy(Tmp, "LeaveParty()", sizeof(Tmp));
-					lastActor->AddAction( GenerateAction(Tmp) );
+					lastActor->Stop();
+					lastActor->AddAction( GenerateAction("LeaveParty()") );
 				}
 				break;
 			case 'Y': // damages all enemies by 300 (resistances apply)
@@ -1073,8 +1063,7 @@ bool GameControl::OnKeyRelease(unsigned char Key, unsigned short Mod)
 				if (lastActor) {
 					//using action so the actor is killed
 					//correctly (synchronisation)
-					lastActor->ClearActions();
-					lastActor->ClearPath();
+					lastActor->Stop();
 
 					Effect *newfx;
 					newfx = EffectQueue::CreateEffect(damage_ref, 300, DAMAGE_MAGIC<<16, FX_DURATION_INSTANT_PERMANENT);
@@ -1634,26 +1623,14 @@ void GameControl::SetScrolling(bool scroll) {
 //generate action code for source actor to try to attack a target
 void GameControl::TryToAttack(Actor *source, Actor *tgt)
 {
-	char Tmp[40];
-
-	source->ClearPath();
-	source->ClearActions();
-	strlcpy(Tmp, "NIDSpecial3()", sizeof(Tmp));
-	source->AddAction( GenerateActionDirect( Tmp, tgt) );
-	source->CommandActor();
+	source->CommandActor(GenerateActionDirect( "NIDSpecial3()", tgt));
 }
 
 //generate action code for source actor to try to defend a target
 void GameControl::TryToDefend(Actor *source, Actor *tgt)
 {
-	char Tmp[40];
-
-	source->ClearPath();
-	source->ClearActions();
 	source->SetModal(MS_NONE);
-	strlcpy(Tmp, "NIDSpecial4()", sizeof(Tmp));
-	source->AddAction( GenerateActionDirect( Tmp, tgt) );
-	source->CommandActor();
+	source->CommandActor(GenerateActionDirect( "NIDSpecial4()", tgt));
 }
 
 // generate action code for source actor to try to pick pockets of a target (if an actor)
@@ -1661,25 +1638,25 @@ void GameControl::TryToDefend(Actor *source, Actor *tgt)
 // The -1 flag is a placeholder for dynamic target IDs
 void GameControl::TryToPick(Actor *source, Scriptable *tgt)
 {
-	char Tmp[40];
-
-	source->ClearPath();
-	source->ClearActions();
 	source->SetModal(MS_NONE);
-	if (tgt->Type == ST_ACTOR) {
-		strlcpy(Tmp, "PickPockets([-1])", sizeof(Tmp));
-	} else if (tgt->Type == ST_DOOR || tgt->Type == ST_CONTAINER) {
-		if (((Highlightable*)tgt)->Trapped && ((Highlightable*)tgt)->TrapDetected) {
-			strlcpy(Tmp, "RemoveTraps([-1])", sizeof(Tmp));
-		} else {
-			strlcpy(Tmp, "PickLock([-1])", sizeof(Tmp));
-		}
-	} else {
-		Log(ERROR, "GameControl", "Invalid pick target of type %d", tgt->Type);
-		return;
+	const char* cmdString = NULL;
+	switch (tgt->Type) {
+		case ST_ACTOR:
+			cmdString = "PickPockets([-1])";
+			break;
+		case ST_DOOR:
+		case ST_CONTAINER:
+			if (((Highlightable*)tgt)->Trapped && ((Highlightable*)tgt)->TrapDetected) {
+				cmdString = "RemoveTraps([-1])";
+			} else {
+				cmdString = "PickLock([-1])";
+			}
+			break;
+		default:
+			Log(ERROR, "GameControl", "Invalid pick target of type %d", tgt->Type);
+			return;
 	}
-	source->AddAction( GenerateActionDirect( Tmp, tgt) );
-	source->CommandActor();
+	source->CommandActor(GenerateActionDirect(cmdString, tgt));
 }
 
 //generate action code for source actor to try to disable trap (only trap type active regions)
@@ -1687,14 +1664,8 @@ void GameControl::TryToDisarm(Actor *source, InfoPoint *tgt)
 {
 	if (tgt->Type!=ST_PROXIMITY) return;
 
-	char Tmp[40];
-
-	source->ClearPath();
-	source->ClearActions();
 	source->SetModal(MS_NONE);
-	strlcpy(Tmp, "RemoveTraps([-1])", sizeof(Tmp));
-	source->AddAction( GenerateActionDirect( Tmp, tgt ) );
-	source->CommandActor();
+	source->CommandActor(GenerateActionDirect( "RemoveTraps([-1])", tgt ));
 }
 
 //generate action code for source actor to use item/cast spell on a point
@@ -1706,8 +1677,7 @@ void GameControl::TryToCast(Actor *source, const Point &tgt)
 		ResetTargetMode();
 		return; //not casting or using an own item
 	}
-	source->ClearPath();
-	source->ClearActions();
+	source->Stop();
 
 	spellCount--;
 	if (spellOrItem>=0) {
@@ -1755,8 +1725,7 @@ void GameControl::TryToCast(Actor *source, Actor *tgt)
 		ResetTargetMode();
 		return; //not casting or using an own item
 	}
-	source->ClearPath();
-	source->ClearActions();
+	source->Stop();
 
 	// cannot target spells on invisible or sanctuaried creatures
 	// invisible actors are invisible, so this is usually impossible by itself, but improved invisibility changes that
@@ -1805,26 +1774,18 @@ void GameControl::TryToCast(Actor *source, Actor *tgt)
 //generate action code for source actor to use talk to target actor
 void GameControl::TryToTalk(Actor *source, Actor *tgt)
 {
-	char Tmp[40];
-
 	//Nidspecial1 is just an unused action existing in all games
 	//(non interactive demo)
 	//i found no fitting action which would emulate this kind of
 	//dialog initation
-	source->ClearPath();
-	source->ClearActions();
 	source->SetModal(MS_NONE);
-	strlcpy(Tmp, "NIDSpecial1()", sizeof(Tmp));
 	dialoghandler->targetID = tgt->GetGlobalID(); //this is a hack, but not so deadly
-	source->AddAction( GenerateActionDirect( Tmp, tgt) );
-	source->CommandActor();
+	source->CommandActor(GenerateActionDirect( "NIDSpecial1()", tgt));
 }
 
 //generate action code for actor appropriate for the target mode when the target is a container
 void GameControl::HandleContainer(Container *container, Actor *actor)
 {
-	char Tmp[256];
-
 	//container is disabled, it should not react
 	if (container->Flags & CONT_DISABLED) {
 		return;
@@ -1840,11 +1801,9 @@ void GameControl::HandleContainer(Container *container, Actor *actor)
 	core->SetEventFlag(EF_RESETTARGET);
 
 	if (target_mode == TARGET_MODE_ATTACK) {
-		actor->ClearPath();
-		actor->ClearActions();
+		char Tmp[256];
 		snprintf(Tmp, sizeof(Tmp), "BashDoor(\"%s\")", container->GetScriptName());
-		actor->AddAction(GenerateAction(Tmp));
-		actor->CommandActor();
+		actor->CommandActor(GenerateAction(Tmp));
 		return;
 	}
 
@@ -1854,19 +1813,13 @@ void GameControl::HandleContainer(Container *container, Actor *actor)
 	}
 
 	container->AddTrigger(TriggerEntry(trigger_clicked, actor->GetGlobalID()));
-	actor->ClearPath();
-	actor->ClearActions();
-	strlcpy(Tmp, "UseContainer()", sizeof(Tmp));
 	core->SetCurrentContainer( actor, container);
-	actor->AddAction( GenerateAction( Tmp) );
-	actor->CommandActor();
+	actor->CommandActor(GenerateAction("UseContainer()"));
 }
 
 //generate action code for actor appropriate for the target mode when the target is a door
 void GameControl::HandleDoor(Door *door, Actor *actor)
 {
-	char Tmp[256];
-
 	if ((target_mode == TARGET_MODE_CAST) && spellCount) {
 		//we'll get the door back from the coordinates
 		Point *p = door->toOpen;
@@ -1881,11 +1834,9 @@ void GameControl::HandleDoor(Door *door, Actor *actor)
 	core->SetEventFlag(EF_RESETTARGET);
 
 	if (target_mode == TARGET_MODE_ATTACK) {
-		actor->ClearPath();
-		actor->ClearActions();
+		char Tmp[256];
 		snprintf(Tmp, sizeof(Tmp), "BashDoor(\"%s\")", door->GetScriptName());
-		actor->AddAction(GenerateAction(Tmp));
-		actor->CommandActor();
+		actor->CommandActor(GenerateAction(Tmp));
 		return;
 	}
 
@@ -1895,13 +1846,9 @@ void GameControl::HandleDoor(Door *door, Actor *actor)
 	}
 
 	door->AddTrigger(TriggerEntry(trigger_clicked, actor->GetGlobalID()));
-	actor->ClearPath();
-	actor->ClearActions();
 	actor->TargetDoor = door->GetGlobalID();
 	// internal gemrb toggle door action hack - should we use UseDoor instead?
-	sprintf( Tmp, "NIDSpecial9()" );
-	actor->AddAction( GenerateAction( Tmp) );
-	actor->CommandActor();
+	actor->CommandActor(GenerateAction("NIDSpecial9()"));
 }
 
 //generate action code for actor appropriate for the target mode when the target is an active region (infopoint, trap or travel)
@@ -1954,8 +1901,7 @@ bool GameControl::HandleActiveRegion(InfoPoint *trap, Actor * actor, Point &p)
 			if (trap->GetUsePoint() ) {
 				char Tmp[256];
 				sprintf(Tmp, "TriggerWalkTo(\"%s\")", trap->GetScriptName());
-				actor->AddAction(GenerateAction(Tmp));
-				actor->CommandActor();
+				actor->CommandActor(GenerateAction(Tmp));
 				return true;
 			}
 			return true;
@@ -2158,8 +2104,7 @@ void GameControl::OnMouseUp(unsigned short x, unsigned short y, unsigned short B
 				return;
 			}
 
-			pc->ClearPath();
-			pc->ClearActions();
+			pc->Stop();
 			CreateMovement(pc, p);
 			if (DoubleClick) Center(x,y);
 			//p is a searchmap travel region
@@ -2202,8 +2147,7 @@ void GameControl::OnMouseUp(unsigned short x, unsigned short y, unsigned short B
 
 		for(i = 0; i < party.size(); i++) {
 			actor = party[i];
-			actor->ClearPath();
-			actor->ClearActions();
+			actor->Stop();
 
 			Map* map = actor->GetCurrentArea();
 			move = GetFormationPoint(map, i, src, p);
@@ -2525,229 +2469,113 @@ void GameControl::SetCutSceneMode(bool active)
 	}
 }
 
-//Change game window geometries when a new window gets deactivated
-void GameControl::HandleWindowHide(const char *WindowName, const char *WindowPosition)
+//Hide or unhide all other windows on the GUI (gamecontrol is not hidden by this)
+bool GameControl::SetGUIHidden(bool hide)
 {
+	if (hide) {
+		//no gamecontrol visible
+		if (!(ScreenFlags&SF_GUIENABLED)
+			|| Owner->Visible == WINDOW_INVISIBLE ) {
+			return false;
+		}
+		ScreenFlags &=~SF_GUIENABLED;
+	} else {
+		if (ScreenFlags&SF_GUIENABLED) {
+			return false;
+		}
+		ScreenFlags |= SF_GUIENABLED;
+		// Unhide the gamecontrol window
+		core->SetVisible( 0, WINDOW_VISIBLE );
+	}
+
+	static const char* keys[6][2] = {
+		{"PortraitWindow", "PortraitPosition"},
+		{"OtherWindow", "OtherPosition"},
+		{"TopWindow", "TopPosition"},
+		{"OptionsWindow", "OptionsPosition"},
+		{"MessageWindow", "MessagePosition"},
+		{"ActionsWindow", "ActionsPosition"},
+	};
+
 	Variables* dict = core->GetDictionary();
 	ieDword index;
 
-	if (dict->Lookup( WindowName, index )) {
-		if (index != (ieDword) -1) {
-			Window* w = core->GetWindow( (unsigned short) index );
-			if (w) {
-				core->SetVisible( (unsigned short) index, WINDOW_INVISIBLE );
-				if (dict->Lookup( WindowPosition, index )) {
-					ResizeDel( w, index );
+	// iterate the list forwards for hiding, and in reverse for unhiding
+	int i = hide ? 0 : 5;
+	int inc = hide ? 1 : -1;
+	WINDOW_RESIZE_OPERATION op = hide ? WINDOW_EXPAND : WINDOW_CONTRACT;
+	for (;i >= 0 && i <= 5; i+=inc) {
+		const char** val = keys[i];
+		Log(MESSAGE, "GameControl", "window: %s", *val);
+		if (dict->Lookup( *val, index )) {
+			if (index != (ieDword) -1) {
+				Window* w = core->GetWindow(index);
+				if (w) {
+					core->SetVisible(index, !hide);
+					if (dict->Lookup( *++val, index )) {
+						Log(MESSAGE, "GameControl", "position: %s", *val);
+						ResizeParentWindowFor( w, index, op );
+						continue;
+					}
 				}
-				return;
+				Log(ERROR, "GameControl", "Invalid window or position: %s:%u",
+					*val, index);
 			}
-			Log(ERROR, "GameControl", "Invalid Window Index: %s:%u",
-				WindowName, index);
 		}
 	}
-}
 
-//Hide all other windows on the GUI (gamecontrol is not hidden by this)
-int GameControl::HideGUI()
-{
-	//hidegui is in effect
-	if (!(ScreenFlags&SF_GUIENABLED) ) {
-		return 0;
-	}
-	//no gamecontrol visible
-	if (Owner->Visible == WINDOW_INVISIBLE ) {
-		return 0;
-	}
-	ScreenFlags &=~SF_GUIENABLED;
-	HandleWindowHide("PortraitWindow", "PortraitPosition");
-	HandleWindowHide("OtherWindow", "OtherPosition");
-	HandleWindowHide("TopWindow", "TopPosition");
-	HandleWindowHide("OptionsWindow", "OptionsPosition");
-	HandleWindowHide("MessageWindow", "MessagePosition");
-	HandleWindowHide("ActionsWindow", "ActionsPosition");
 	//FloatWindow doesn't affect gamecontrol, so it is special
-	Variables* dict = core->GetDictionary();
-	ieDword index;
-
-	if (dict->Lookup( "FloatWindow", index )) {
+	if (dict->Lookup("FloatWindow", index)) {
 		if (index != (ieDword) -1) {
-			core->SetVisible( (unsigned short) index, WINDOW_INVISIBLE );
-		}
-	}
-	core->GetVideoDriver()->SetViewport( Owner->XPos, Owner->YPos, Width, Height );
-	return 1;
-}
-
-//Change game window geometries when a new window gets activated
-void GameControl::HandleWindowReveal(const char *WindowName, const char *WindowPosition)
-{
-	Variables* dict = core->GetDictionary();
-	ieDword index;
-
-	if (dict->Lookup( WindowName, index )) {
-		if (index != (ieDword) -1) {
-			Window* w = core->GetWindow( (unsigned short) index );
-			if (w) {
-				core->SetVisible( (unsigned short) index, WINDOW_VISIBLE );
-				if (dict->Lookup( WindowPosition, index )) {
-					ResizeAdd( w, index );
-				}
-				return;
-			}
-			Log(ERROR, "GameControl", "Invalid Window Index %s:%u",
-				WindowName, index);
-		}
-	}
-}
-
-//Reveal all windows on the GUI (including this one)
-int GameControl::UnhideGUI()
-{
-	if (ScreenFlags&SF_GUIENABLED) {
-		return 0;
-	}
-
-	ScreenFlags |= SF_GUIENABLED;
-	// Unhide the gamecontrol window
-	core->SetVisible( 0, WINDOW_VISIBLE );
-
-	HandleWindowReveal("ActionsWindow", "ActionsPosition");
-	HandleWindowReveal("MessageWindow", "MessagePosition");
-	HandleWindowReveal("OptionsWindow", "OptionsPosition");
-	HandleWindowReveal("TopWindow", "TopPosition");
-	HandleWindowReveal("OtherWindow", "OtherPosition");
-	HandleWindowReveal("PortraitWindow", "PortraitPosition");
-	//the floatwindow is a special case
-	Variables* dict = core->GetDictionary();
-	ieDword index;
-
-	if (dict->Lookup( "FloatWindow", index )) {
-		if (index != (ieDword) -1) {
-			Window* fw = core->GetWindow( (unsigned short) index );
-			if (fw) {
-				core->SetVisible( (unsigned short) index, WINDOW_VISIBLE );
+			core->SetVisible(index, !hide);
+			if (!hide) {
+				Window* fw = core->GetWindow(index);
 				fw->Flags |=WF_FLOAT;
-				core->SetOnTop( index );
+				core->SetOnTop(index);
 			}
 		}
 	}
 	core->GetVideoDriver()->SetViewport( Owner->XPos, Owner->YPos, Width, Height );
-	return 1;
+	return true;
 }
 
-//a window got removed, so the GameControl gets enlarged
-void GameControl::ResizeDel(Window* win, int type)
+void GameControl::ResizeParentWindowFor(Window* win, int type, WINDOW_RESIZE_OPERATION op)
 {
-	switch (type) {
-	case 0: //Left
-		if (LeftCount!=1) {
-			Log(ERROR, "GameControl", "More than one left window!");
+	// when GameControl contracts it adds to windowGroupCounts
+	// WINDOW_CONTRACT is a positive operation and WINDOW_EXPAND is negative
+	if (type < WINDOW_GROUP_COUNT) {
+		windowGroupCounts[type] += op;
+		if ((op == WINDOW_CONTRACT && windowGroupCounts[type] == 1)
+			|| (op == WINDOW_EXPAND && !windowGroupCounts[type])) {
+			switch (type) {
+				case WINDOW_GROUP_LEFT:
+					Owner->XPos += win->Width * op;
+					// fallthrough
+				case WINDOW_GROUP_RIGHT:
+					Owner->Width -= win->Width * op;
+					break;
+				case WINDOW_GROUP_TOP:
+					Owner->YPos += win->Height * op;
+					// fallthrough
+				case WINDOW_GROUP_BOTTOM:
+					Owner->Height -= win->Height * op;
+					break;
+			}
 		}
-		LeftCount--;
-		if (!LeftCount) {
-			Owner->XPos -= win->Width;
-			Owner->Width += win->Width;
-			Width = Owner->Width;
-		}
-		break;
-
-	case 1: //Bottom
-		if (BottomCount!=1) {
-			Log(ERROR, "GameControl", "More than one bottom window!");
-		}
-		BottomCount--;
-		if (!BottomCount) {
-			Owner->Height += win->Height;
-			Height = Owner->Height;
-		}
-		break;
-
-	case 2: //Right
-		if (RightCount!=1) {
-			Log(ERROR, "GameControl", "More than one right window!");
-		}
-		RightCount--;
-		if (!RightCount) {
-			Owner->Width += win->Width;
-			Width = Owner->Width;
-		}
-		break;
-
-	case 3: //Top
-		if (TopCount!=1) {
-			Log(ERROR, "GameControl", "More than one top window!");
-		}
-		TopCount--;
-		if (!TopCount) {
-			Owner->YPos -= win->Height;
-			Owner->Height += win->Height;
-			Height = Owner->Height;
-		}
-		break;
-
-	case 4: //BottomAdded
-		BottomCount--;
-		Owner->Height += win->Height;
+		Width = Owner->Width;
 		Height = Owner->Height;
-		break;
-	case 5: //Inactivating
-		BottomCount--;
-		Owner->Height += win->Height;
-		Height = Owner->Height;
-		break;
 	}
-}
-
-//a window got added, so the GameControl gets shrunk
-//Owner is the GameControl's window
-//GameControl is the only control on that window
-void GameControl::ResizeAdd(Window* win, int type)
-{
-	switch (type) {
-	case 0: //Left
-		LeftCount++;
-		if (LeftCount == 1) {
-			Owner->XPos += win->Width;
-			Owner->Width -= win->Width;
-			Width = Owner->Width;
-		}
-		break;
-
-	case 1: //Bottom
-		BottomCount++;
-		if (BottomCount == 1) {
-			Owner->Height -= win->Height;
+	// 4 == BottomAdded; 5 == Inactivating
+	else if (type <= 5) {
+		windowGroupCounts[WINDOW_GROUP_BOTTOM] += op;
+		Owner->Height -= win->Height * op;
+		if (op == WINDOW_CONTRACT && type == 5) {
+			Height = 0;
+		} else {
 			Height = Owner->Height;
 		}
-		break;
-
-	case 2: //Right
-		RightCount++;
-		if (RightCount == 1) {
-			Owner->Width -= win->Width;
-			Width = Owner->Width;
-		}
-		break;
-
-	case 3: //Top
-		TopCount++;
-		if (TopCount == 1) {
-			Owner->YPos += win->Height;
-			Owner->Height -= win->Height;
-			Height = Owner->Height;
-		}
-		break;
-
-	case 4: //BottomAdded
-		BottomCount++;
-		Owner->Height -= win->Height;
-		Height = Owner->Height;
-		break;
-
-	case 5: //Inactivating
-		BottomCount++;
-		Owner->Height -= win->Height;
-		Height = 0;
+	} else {
+		Log(ERROR, "GameControl", "Unknown resize type: %d", type);
 	}
 }
 
@@ -2843,11 +2671,11 @@ Sprite2D* GameControl::GetScreenshot(bool show_gui)
 	if (show_gui) {
 		screenshot = core->GetVideoDriver()->GetScreenshot( Region( 0, 0, 0, 0) );
 	} else {
-		int hf = HideGUI ();
+		int hf = SetGUIHidden(true);
 		Draw (0, 0);
 		screenshot = core->GetVideoDriver()->GetScreenshot( Region( 0, 0, 0, 0 ) );
 		if (hf) {
-			UnhideGUI ();
+			SetGUIHidden(false);
 		}
 		core->DrawWindows ();
 	}

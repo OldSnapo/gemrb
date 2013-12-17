@@ -328,6 +328,7 @@ public:
 	Action* GetNextAction() const;
 	Action* PopNextAction();
 	void ClearActions();
+	virtual void Stop();
 	virtual void ReleaseCurrentAction();
 	bool InMove() const;
 	void ProcessActions();
@@ -451,11 +452,12 @@ private: //these seem to be sensitive, so get protection
 
 	PathNode* path; //whole path
 	PathNode* step; //actual step
+protected:
+	ieDword timeStartStep;
 public:
 	Movable(ScriptableType type);
 	virtual ~Movable(void);
 	Point Destination;
-	ieDword timeStartStep;
 	Sprite2D* lastFrame;
 	ieResRef Area;
 public:
@@ -489,7 +491,7 @@ public:
 
 	void SetStance(unsigned int arg);
 	void SetAttackMoveChances(ieWord *amc);
-	bool DoStep(unsigned int walk_speed, ieDword time = 0);
+	virtual bool DoStep(unsigned int walk_speed, ieDword time = 0);
 	void AddWayPoint(const Point &Des);
 	void RunAwayFrom(const Point &Des, int PathLength, int flags);
 	void RandomWalk(bool can_stop, bool run);
@@ -497,11 +499,12 @@ public:
 	void FixPosition();
 	void WalkTo(const Point &Des, int MinDistance = 0);
 	void MoveTo(const Point &Des);
+	void Stop();
 	void ClearPath();
+
 	/* returns the most likely position of this actor */
 	Point GetMostLikelyPosition();
 	virtual bool BlocksSearchMap() const = 0;
-
 };
 
 //Tiled objects are not used (and maybe not even implemented correctly in IE)

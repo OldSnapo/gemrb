@@ -389,7 +389,7 @@ static PyObject* GemRB_UnhideGUI(PyObject*, PyObject* /*args*/)
 	if (!gc) {
 		return RuntimeError("No gamecontrol!");
 	}
-	gc->UnhideGUI();
+	gc->SetGUIHidden(false);
 	//this enables mouse in dialogs, which is wrong
 	//gc->SetCutSceneMode( false );
 	Py_INCREF( Py_None );
@@ -407,7 +407,7 @@ static PyObject* GemRB_HideGUI(PyObject*, PyObject* /*args*/)
 	if (!gc) {
 		return PyInt_FromLong( 0 );
 	}
-	int ret = gc->HideGUI();
+	int ret = gc->SetGUIHidden(true);
 
 	return PyInt_FromLong( ret );
 }
@@ -8530,11 +8530,8 @@ static PyObject* GemRB_LeaveParty(PyObject * /*self*/, PyObject* args)
 		if (initDialog == 2)
 		GameScript::SetLeavePartyDialogFile(actor, NULL);
 		if(actor->GetBase(IE_HITPOINTS) > 0) {
-			char Tmp[40];
-			actor->ClearPath();
-			actor->ClearActions();
-			strncpy(Tmp,"Dialogue([PC])",sizeof(Tmp) );
-			actor->AddAction( GenerateAction(Tmp) );
+			actor->Stop();
+			actor->AddAction( GenerateAction("Dialogue([PC])") );
 		}
 	}
 	game->LeaveParty (actor);
@@ -9189,8 +9186,7 @@ static PyObject* GemRB_ClearActions(PyObject * /*self*/, PyObject* args)
 		Py_INCREF( Py_None );
 		return Py_None;
 	}
-	actor->ClearPath();      //stop walking
-	actor->ClearActions();   //stop pending action involved walking
+	actor->Stop(); //stop pending action involved walking
 	actor->SetModal(MS_NONE);//stop modal actions
 	Py_INCREF( Py_None );
 	return Py_None;

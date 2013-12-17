@@ -1979,12 +1979,9 @@ bool GameScript::Update(bool *continuing, bool *done)
 
 					//movetoobjectfollow would break if this isn't called
 					//(what is broken if it is here?)
-					MySelf->ClearActions();
 					//IE even clears the path, shall we?
 					//yes we must :)
-					if (MySelf->Type == ST_ACTOR) {
-						((Movable *)MySelf)->ClearPath();
-					}
+					MySelf->Stop();
 				}
 				lastAction=a;
 			}
@@ -2280,7 +2277,7 @@ int Response::Execute(Scriptable* Sender)
 {
 	int ret = 0; // continue or not
 	for (size_t i = 0; i < actions.size(); i++) {
-		if (canary == 0xdddddddd) {
+		if (!CheckCanary()) {
 			// FIXME: hack to prevent crashing when a script deletes itself.
 			// this object has been deleted and this should not be considered a fix (it may cause unforseen problems too).
 			Log(ERROR, "GameScript", "Aborting response execution due to object deletion.\n \
@@ -2425,42 +2422,47 @@ Trigger* GenerateTrigger(char* String)
 	return trigger;
 }
 
-Action* GenerateAction(char* String)
+Action* GenerateAction(const char* String)
 {
-	strlwr( String );
+	Action* action = NULL;
+	char* actionString = strdup(String);
+	// the only thing we seem to need a copy for is the call to strlwr...
+	strlwr( actionString );
 	if (InDebug&ID_ACTIONS) {
 		Log(WARNING, "GameScript", "Compiling:%s", String);
 	}
 	int len = strlench(String,'(')+1; //including (
-	char *src = String+len;
+	char *src = actionString+len;
 	int i = -1;
 	char *str;
 	unsigned short actionID;
 	if (overrideActionsTable) {
-		i = overrideActionsTable->FindString(String, len);
+		i = overrideActionsTable->FindString(actionString, len);
 		if (i >= 0) {
 			str = overrideActionsTable->GetStringIndex( i )+len;
 			actionID = overrideActionsTable->GetValueIndex(i);
 		}
 	}
 	if (i<0) {
-		i = actionsTable->FindString(String, len);
+		i = actionsTable->FindString(actionString, len);
 		if (i < 0) {
 			Log(ERROR, "GameScript", "Invalid scripting action: %s", String);
-			return NULL;
+			goto done;
 		}
 		str = actionsTable->GetStringIndex( i )+len;
 		actionID = actionsTable->GetValueIndex(i);
 	}
-	Action *action = GenerateActionCore( src, str, actionID);
+	action = GenerateActionCore( src, str, actionID);
 	if (!action) {
 		Log(ERROR, "GameScript", "Malformed scripting action: %s", String);
-		return NULL;
+		goto done;
 	}
+	done:
+	free(actionString);
 	return action;
 }
 
-Action* GenerateActionDirect(char *String, Scriptable *object)
+Action* GenerateActionDirect(const char *String, Scriptable *object)
 {
 	Action* action = GenerateAction(String);
 	if (!action) return NULL;
@@ -2483,7 +2485,7 @@ void Object::dump(StringBuffer& buffer) const
 {
 	int i;
 
-	GSASSERT( canary == (unsigned long) 0xdeadbeef, canary );
+	AssertCanary(__FUNCTION__);
 	if(objectName[0]) {
 		buffer.appendFormatted("Object: %s\n",objectName);
 		return;
@@ -2526,7 +2528,7 @@ void Trigger::dump() const
 
 void Trigger::dump(StringBuffer& buffer) const
 {
-	GSASSERT( canary == (unsigned long) 0xdeadbeef, canary );
+	AssertCanary(__FUNCTION__);
 	buffer.appendFormatted("Trigger: %d\n", triggerID);
 	buffer.appendFormatted("Int parameters: %d %d %d\n", int0Parameter, int1Parameter, int2Parameter);
 	buffer.appendFormatted("Point: [%d.%d]\n", pointParameter.x, pointParameter.y);
@@ -2551,7 +2553,7 @@ void Action::dump(StringBuffer& buffer) const
 {
 	int i;
 
-	GSASSERT( canary == (unsigned long) 0xdeadbeef, canary );
+	AssertCanary(__FUNCTION__);
 	buffer.appendFormatted("Int0: %d, Int1: %d, Int2: %d\n",int0Parameter, int1Parameter, int2Parameter);
 	buffer.appendFormatted("String0: %s, String1: %s\n", string0Parameter?string0Parameter:"<NULL>", string1Parameter?string1Parameter:"<NULL>");
 	for (i=0;i<3;i++) {

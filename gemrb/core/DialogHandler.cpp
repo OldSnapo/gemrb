@@ -281,20 +281,15 @@ void DialogHandler::DialogChoose(unsigned int choose)
 			// executing actions directly does not work, because dialog
 			// needs to end before final actions are executed due to
 			// actions making new dialogs!
-			if (target->Type == ST_ACTOR) ((Movable *)target)->ClearPath(); // fuzzie added this
-				target->ClearActions();
+			target->Stop();
 
 			// do not interrupt during dialog actions (needed for aerie.d polymorph block)
-			char buf[20];
-			strcpy(buf, "BreakInstants()");
-			target->AddAction( GenerateAction( buf ) );
-			strcpy(buf, "SetInterrupt(FALSE)");
-			target->AddAction( GenerateAction( buf ) );
+			target->AddAction( GenerateAction( "BreakInstants()" ) );
+			target->AddAction( GenerateAction( "SetInterrupt(FALSE)" ) );
 			for (unsigned int i = 0; i < tr->actions.size(); i++) {
 				target->AddAction(tr->actions[i]);
 			}
-			strcpy(buf, "SetInterrupt(TRUE)");
-			target->AddAction( GenerateAction( buf ) );
+			target->AddAction( GenerateAction( "SetInterrupt(TRUE)" ) );
 		}
 
 		int final_dialog = tr->Flags & IE_DLG_TR_FINAL;
