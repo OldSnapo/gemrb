@@ -537,16 +537,20 @@ int CanSee(Scriptable* Sender, Scriptable* target, bool range, int seeflag)
 
 	if (range) {
 		unsigned int dist;
-
+		bool los = true;
 		if (Sender->Type == ST_ACTOR) {
 			Actor* snd = ( Actor* ) Sender;
 			dist = snd->Modified[IE_VISUALRANGE];
 		} else {
 			dist = 30;
+			los = false;
 		}
 
 		if (Distance(target->Pos, Sender->Pos) > dist * 15) {
 			return 0;
+		}
+		if (!los) {
+			return 1;
 		}
 	}
 
@@ -881,7 +885,7 @@ void GetTalkPositionFromScriptable(Scriptable* scr, Point &position)
 				position=((InfoPoint *) scr)->UsePoint;
 				break;
 			}
-			position=((InfoPoint *) scr)->TrapLaunch;
+			position=((InfoPoint *) scr)->TalkPos;
 			break;
 		case ST_DOOR: case ST_CONTAINER:
 			position=((Highlightable *) scr)->TrapLaunch;
@@ -992,19 +996,13 @@ void BeginDialog(Scriptable* Sender, Action* parameters, int Flags)
 
 			if (target->InMove()) {
 				//waiting for target
-				Sender->AddActionInFront( Sender->GetCurrentAction() );
-				Sender->ReleaseCurrentAction();
-				Sender->SetWait(1);
 				return;
 			}
 			GetTalkPositionFromScriptable(scr, TalkPos);
 			if (PersonalDistance(TalkPos, target)>MAX_OPERATING_DISTANCE ) {
 				//try to force the target to come closer???
-				GoNear(target, TalkPos);
-				Sender->AddActionInFront( Sender->GetCurrentAction() );
-				Sender->ReleaseCurrentAction();
-				Sender->SetWait(1);
-				return;
+				if(!MoveNearerTo(target, TalkPos, MAX_OPERATING_DISTANCE, 1))
+					return;
 			}
 		}
 	}
@@ -1706,18 +1704,6 @@ Action* GenerateActionCore(const char *src, const char *str, unsigned short acti
 			src++;
 	}
 	return newAction;
-}
-
-void GoNear(Scriptable *Sender, const Point &p)
-{
-	if (Sender->GetCurrentAction()) {
-		Log(ERROR, "GameScript", "Target busy???");
-		return;
-	}
-	char Tmp[256];
-	sprintf( Tmp, "MoveToPoint([%hd.%hd])", p.x, p.y );
-	Action * action = GenerateAction( Tmp);
-	Sender->AddActionInFront( action );
 }
 
 void MoveNearerTo(Scriptable *Sender, Scriptable *target, int distance, int dont_release)
